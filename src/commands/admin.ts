@@ -226,9 +226,9 @@ async function handleResults(interaction: ChatInputCommandInteraction): Promise<
 
     await interaction.editReply({ embeds });
 
-    // Also post in announce channel if configured
-    if (config.announceChannelId) {
-      const channel = interaction.client.channels.cache.get(config.announceChannelId);
+    // Also post in announce channels if configured
+    for (const channelId of config.announceChannelIds) {
+      const channel = interaction.client.channels.cache.get(channelId);
       if (channel && "send" in channel) {
         await (channel as any).send({ embeds });
       }

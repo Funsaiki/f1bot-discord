@@ -168,10 +168,7 @@ async function announceResults(
   category: BetCategory,
   actual: string[]
 ): Promise<void> {
-  if (!config.announceChannelId) return;
-
-  const channel = client.channels.cache.get(config.announceChannelId) as TextBasedChannel | undefined;
-  if (!channel || !("send" in channel)) return;
+  if (config.announceChannelIds.length === 0) return;
 
   const scoreRows = db
     .select()
@@ -185,5 +182,11 @@ async function announceResults(
     }));
 
   const embed = resultsAnnouncementEmbed(race, category, actual, scoreRows);
-  await channel.send({ embeds: [embed] });
+
+  for (const channelId of config.announceChannelIds) {
+    const channel = client.channels.cache.get(channelId) as TextBasedChannel | undefined;
+    if (channel && "send" in channel) {
+      await channel.send({ embeds: [embed] });
+    }
+  }
 }
