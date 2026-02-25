@@ -6,10 +6,14 @@ import { config } from "../config";
 import { fetchQualifyingResults, fetchRaceResults } from "./f1-api";
 import { scoreRaceCategory } from "./scoring";
 import { resultsAnnouncementEmbed } from "../utils/embeds";
+import { EmbedBuilder } from "discord.js";
 import type { Client, TextBasedChannel } from "discord.js";
 import type { BetCategory, Race } from "../db/schema";
 import { raceResults, scores } from "../db/schema";
 import { and } from "drizzle-orm";
+
+// Track sent reminders to avoid duplicates (resets on bot restart)
+const sentReminders = new Set<string>();
 
 /** Start all scheduled jobs */
 export function startScheduler(client: Client): void {
@@ -21,6 +25,11 @@ export function startScheduler(client: Client): void {
   // Check every 30 minutes after typical session end times for new results
   cron.schedule("*/30 * * * *", () => {
     checkForNewResults(client);
+  });
+
+  // Check every hour for upcoming sessions to send reminders
+  cron.schedule("0 * * * *", () => {
+    sendReminders(client);
   });
 
   console.log("[Scheduler] Cron jobs démarrés.");
@@ -140,6 +149,80 @@ async function fetchAndScoreRace(race: Race, client: Client): Promise<void> {
     upsertResult(race.id, "fastest_lap", [data.fastestLap]);
     scoreRaceCategory(race.id, "fastest_lap");
     await announceResults(client, race, "fastest_lap", [data.fastestLap]);
+  }
+}
+
+/** Send reminders 24h before each session */
+async function sendReminders(client: Client): Promise<void> {
+  if (config.announceChannelIds.length === 0) return;
+
+  const now = new Date();
+  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  const allRaces = db
+    .select()
+    .from(races)
+    .where(eq(races.season, config.f1Season))
+    .all();
+
+  for (const race of allRaces) {
+    // Reminder for qualifying
+    const qualiDate = new Date(race.qualiDate);
+    const qualiKey = `quali_${race.id}`;
+    if (
+      !race.qualiLocked &&
+      !sentReminders.has(qualiKey) &&
+      qualiDate > now &&
+      qualiDate <= in24h
+    ) {
+      const hoursLeft = Math.round((qualiDate.getTime() - now.getTime()) / (60 * 60 * 1000));
+      const embed = new EmbedBuilder()
+        .setTitle(`\u23F0 Rappel — Qualifications dans ~${hoursLeft}h !`)
+        .setDescription(
+          `**${race.name}** — ${race.country}\n\n` +
+          `Les qualifications commencent <t:${Math.floor(qualiDate.getTime() / 1000)}:R>.\n\n` +
+          `N'oubliez pas de faire vos pronostics avec \`/pronos\` !`
+        )
+        .setColor(0xff9800);
+
+      for (const channelId of config.announceChannelIds) {
+        const channel = client.channels.cache.get(channelId) as TextBasedChannel | undefined;
+        if (channel && "send" in channel) {
+          await channel.send({ embeds: [embed] });
+        }
+      }
+      sentReminders.add(qualiKey);
+      console.log(`[Scheduler] Rappel qualifs envoyé pour ${race.name}`);
+    }
+
+    // Reminder for race
+    const raceDate = new Date(race.raceDate);
+    const raceKey = `race_${race.id}`;
+    if (
+      !race.raceLocked &&
+      !sentReminders.has(raceKey) &&
+      raceDate > now &&
+      raceDate <= in24h
+    ) {
+      const hoursLeft = Math.round((raceDate.getTime() - now.getTime()) / (60 * 60 * 1000));
+      const embed = new EmbedBuilder()
+        .setTitle(`\u23F0 Rappel — Course dans ~${hoursLeft}h !`)
+        .setDescription(
+          `**${race.name}** — ${race.country}\n\n` +
+          `La course commence <t:${Math.floor(raceDate.getTime() / 1000)}:R>.\n\n` +
+          `N'oubliez pas de faire vos pronostics avec \`/pronos\` !`
+        )
+        .setColor(0xff9800);
+
+      for (const channelId of config.announceChannelIds) {
+        const channel = client.channels.cache.get(channelId) as TextBasedChannel | undefined;
+        if (channel && "send" in channel) {
+          await channel.send({ embeds: [embed] });
+        }
+      }
+      sentReminders.add(raceKey);
+      console.log(`[Scheduler] Rappel course envoyé pour ${race.name}`);
+    }
   }
 }
 
