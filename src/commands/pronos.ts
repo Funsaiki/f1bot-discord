@@ -29,9 +29,14 @@ const ALL_STEPS: Step[] = [
   { category: "podium", label: "Podium Course", emoji: "\uD83C\uDF1F", picks: 3 },
   { category: "last_race", label: "Dernier Course", emoji: "\uD83D\uDCA8", picks: 1 },
   { category: "fastest_lap", label: "Meilleur Tour", emoji: "\u23F1\uFE0F", picks: 1 },
+  { category: "sprint_winner", label: "Vainqueur Sprint", emoji: "\uD83C\uDFC6", picks: 1 },
+  { category: "sprint_podium", label: "Podium Sprint", emoji: "\uD83C\uDF1F", picks: 3 },
+  { category: "sprint_last", label: "Dernier Sprint", emoji: "\uD83D\uDCA8", picks: 1 },
+  { category: "sprint_fastest_lap", label: "Meilleur Tour Sprint", emoji: "\u23F1\uFE0F", picks: 1 },
 ];
 
 const QUALI_CATEGORIES: BetCategory[] = ["pole", "top3_quali", "last_quali"];
+const SPRINT_CATEGORIES: BetCategory[] = ["sprint_winner", "sprint_podium", "sprint_last", "sprint_fastest_lap"];
 
 const data = new SlashCommandBuilder()
   .setName("pronos")
@@ -45,12 +50,15 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
   }
   const race = raceOrNull;
 
-  // Filter steps based on what's locked
+  // Filter steps based on what's locked and sprint availability
   const qualiOpen = !isLocked(race.id, "pole");
   const raceOpen = !isLocked(race.id, "winner");
+  const hasSprint = !!race.sprintDate;
+  const sprintOpen = hasSprint && !isLocked(race.id, "sprint_winner");
 
   const steps = ALL_STEPS.filter((s) => {
     if (QUALI_CATEGORIES.includes(s.category)) return qualiOpen;
+    if (SPRINT_CATEGORIES.includes(s.category)) return sprintOpen;
     return raceOpen;
   });
 

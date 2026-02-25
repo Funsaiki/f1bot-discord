@@ -5,7 +5,7 @@ import { config } from "../config";
 import { db } from "../db";
 import { races, raceResults } from "../db/schema";
 import { eq, and } from "drizzle-orm";
-import { fetchSeasonCalendar, fetchQualifyingResults, fetchRaceResults } from "../services/f1-api";
+import { fetchSeasonCalendar, fetchQualifyingResults, fetchRaceResults, fetchSprintResults } from "../services/f1-api";
 import { scoreRaceCategory } from "../services/scoring";
 import { resultsAnnouncementEmbed } from "../utils/embeds";
 import type { BetCategory } from "../db/schema";
@@ -53,7 +53,8 @@ const data = new SlashCommandBuilder()
           .setRequired(true)
           .addChoices(
             { name: "Qualifications", value: "quali" },
-            { name: "Course", value: "race" }
+            { name: "Course", value: "race" },
+            { name: "Sprint", value: "sprint" }
           )
       )
   )
@@ -71,7 +72,8 @@ const data = new SlashCommandBuilder()
           .setRequired(true)
           .addChoices(
             { name: "Qualifications", value: "quali" },
-            { name: "Course", value: "race" }
+            { name: "Course", value: "race" },
+            { name: "Sprint", value: "sprint" }
           )
       )
   );
@@ -118,6 +120,7 @@ async function handleSync(interaction: ChatInputCommandInteraction): Promise<voi
             country: race.country,
             qualiDate: race.qualiDate,
             raceDate: race.raceDate,
+            sprintDate: race.sprintDate,
           })
           .where(eq(races.id, existing.id))
           .run();
@@ -131,6 +134,7 @@ async function handleSync(interaction: ChatInputCommandInteraction): Promise<voi
             country: race.country,
             qualiDate: race.qualiDate,
             raceDate: race.raceDate,
+            sprintDate: race.sprintDate,
           })
           .run();
       }
@@ -185,6 +189,40 @@ async function handleResults(interaction: ChatInputCommandInteraction): Promise<
       embeds.push(resultsAnnouncementEmbed(race, "pole", [qualiData.pole], poleScores));
       embeds.push(resultsAnnouncementEmbed(race, "top3_quali", qualiData.top3, top3Scores));
       embeds.push(resultsAnnouncementEmbed(race, "last_quali", [qualiData.last], lastQualiScores));
+    }
+
+    // Fetch sprint results (if sprint race)
+    if (race.sprintDate) {
+      const sprintData = await fetchSprintResults(round, config.f1Season);
+      if (sprintData) {
+        await upsertResult(race.id, "sprint_winner", [sprintData.winner]);
+        scoreRaceCategory(race.id, "sprint_winner");
+
+        await upsertResult(race.id, "sprint_podium", sprintData.podium);
+        scoreRaceCategory(race.id, "sprint_podium");
+
+        await upsertResult(race.id, "sprint_last", [sprintData.last]);
+        scoreRaceCategory(race.id, "sprint_last");
+
+        if (sprintData.fastestLap) {
+          await upsertResult(race.id, "sprint_fastest_lap", [sprintData.fastestLap]);
+          scoreRaceCategory(race.id, "sprint_fastest_lap");
+        }
+
+        db.update(races).set({ sprintLocked: true }).where(eq(races.id, race.id)).run();
+
+        const sprintWinnerScores = getScoresForAnnouncement(race.id, "sprint_winner");
+        const sprintPodiumScores = getScoresForAnnouncement(race.id, "sprint_podium");
+        const sprintLastScores = getScoresForAnnouncement(race.id, "sprint_last");
+        embeds.push(resultsAnnouncementEmbed(race, "sprint_winner", [sprintData.winner], sprintWinnerScores));
+        embeds.push(resultsAnnouncementEmbed(race, "sprint_podium", sprintData.podium, sprintPodiumScores));
+        embeds.push(resultsAnnouncementEmbed(race, "sprint_last", [sprintData.last], sprintLastScores));
+
+        if (sprintData.fastestLap) {
+          const sprintFLScores = getScoresForAnnouncement(race.id, "sprint_fastest_lap");
+          embeds.push(resultsAnnouncementEmbed(race, "sprint_fastest_lap", [sprintData.fastestLap], sprintFLScores));
+        }
+      }
     }
 
     // Fetch race results
@@ -254,13 +292,15 @@ async function handleLockToggle(interaction: ChatInputCommandInteraction, lock: 
     return;
   }
 
-  const field = session === "quali" ? "qualiLocked" : "raceLocked";
+  const fieldMap: Record<string, string> = { quali: "qualiLocked", race: "raceLocked", sprint: "sprintLocked" };
+  const labelMap: Record<string, string> = { quali: "qualifications", race: "course", sprint: "sprint" };
+  const field = fieldMap[session];
   db.update(races)
     .set({ [field]: lock })
     .where(eq(races.id, race.id))
     .run();
 
-  const sessionLabel = session === "quali" ? "qualifications" : "course";
+  const sessionLabel = labelMap[session];
   const action = lock ? "verrouillés" : "déverrouillés";
   await interaction.reply(`Pronostics **${sessionLabel}** ${action} pour **${race.name}**.`);
 }

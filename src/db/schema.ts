@@ -9,8 +9,10 @@ export const races = sqliteTable("races", {
   country: text("country").notNull(),
   qualiDate: text("quali_date").notNull(),
   raceDate: text("race_date").notNull(),
+  sprintDate: text("sprint_date"), // null if no sprint
   qualiLocked: integer("quali_locked", { mode: "boolean" }).notNull().default(false),
   raceLocked: integer("race_locked", { mode: "boolean" }).notNull().default(false),
+  sprintLocked: integer("sprint_locked", { mode: "boolean" }).notNull().default(false),
 }, (table) => [
   uniqueIndex("races_season_round_idx").on(table.season, table.round),
 ]);
@@ -20,7 +22,7 @@ export const bets = sqliteTable("bets", {
   userId: text("user_id").notNull(),
   username: text("username").notNull(),
   raceId: integer("race_id").notNull().references(() => races.id),
-  category: text("category", { enum: ["pole", "top3_quali", "winner", "podium", "last_quali", "last_race", "fastest_lap"] }).notNull(),
+  category: text("category", { enum: ["pole", "top3_quali", "winner", "podium", "last_quali", "last_race", "fastest_lap", "sprint_winner", "sprint_podium", "sprint_last", "sprint_fastest_lap"] }).notNull(),
   predictions: text("predictions").notNull(), // JSON string[]
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 }, (table) => [
@@ -30,7 +32,7 @@ export const bets = sqliteTable("bets", {
 export const raceResults = sqliteTable("race_results", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   raceId: integer("race_id").notNull().references(() => races.id),
-  category: text("category", { enum: ["pole", "top3_quali", "winner", "podium", "last_quali", "last_race", "fastest_lap"] }).notNull(),
+  category: text("category", { enum: ["pole", "top3_quali", "winner", "podium", "last_quali", "last_race", "fastest_lap", "sprint_winner", "sprint_podium", "sprint_last", "sprint_fastest_lap"] }).notNull(),
   results: text("results").notNull(), // JSON string[]
 }, (table) => [
   uniqueIndex("results_race_cat_idx").on(table.raceId, table.category),
@@ -41,7 +43,7 @@ export const scores = sqliteTable("scores", {
   userId: text("user_id").notNull(),
   username: text("username").notNull(),
   raceId: integer("race_id").notNull().references(() => races.id),
-  category: text("category", { enum: ["pole", "top3_quali", "winner", "podium", "last_quali", "last_race", "fastest_lap"] }).notNull(),
+  category: text("category", { enum: ["pole", "top3_quali", "winner", "podium", "last_quali", "last_race", "fastest_lap", "sprint_winner", "sprint_podium", "sprint_last", "sprint_fastest_lap"] }).notNull(),
   points: integer("points").notNull(),
   detail: text("detail").notNull(), // JSON explanation
 }, (table) => [
@@ -52,4 +54,4 @@ export type Race = typeof races.$inferSelect;
 export type Bet = typeof bets.$inferSelect;
 export type RaceResult = typeof raceResults.$inferSelect;
 export type Score = typeof scores.$inferSelect;
-export type BetCategory = "pole" | "top3_quali" | "winner" | "podium" | "last_quali" | "last_race" | "fastest_lap";
+export type BetCategory = "pole" | "top3_quali" | "winner" | "podium" | "last_quali" | "last_race" | "fastest_lap" | "sprint_winner" | "sprint_podium" | "sprint_last" | "sprint_fastest_lap";

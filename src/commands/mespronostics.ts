@@ -28,6 +28,10 @@ const CATEGORIES: CategoryInfo[] = [
   { category: "podium", label: "Podium Course", emoji: "\uD83C\uDF1F", picks: 3 },
   { category: "last_race", label: "Dernier Course", emoji: "\uD83D\uDCA8", picks: 1 },
   { category: "fastest_lap", label: "Meilleur Tour", emoji: "\u23F1\uFE0F", picks: 1 },
+  { category: "sprint_winner", label: "Vainqueur Sprint", emoji: "\uD83C\uDFC6", picks: 1 },
+  { category: "sprint_podium", label: "Podium Sprint", emoji: "\uD83C\uDF1F", picks: 3 },
+  { category: "sprint_last", label: "Dernier Sprint", emoji: "\uD83D\uDCA8", picks: 1 },
+  { category: "sprint_fastest_lap", label: "Meilleur Tour Sprint", emoji: "\u23F1\uFE0F", picks: 1 },
 ];
 
 const data = new SlashCommandBuilder()

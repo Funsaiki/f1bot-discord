@@ -17,6 +17,10 @@ const POINTS = {
   last_quali: { correct: 3 },
   last_race: { correct: 3 },
   fastest_lap: { correct: 3 },
+  sprint_winner: { correct: 5 },
+  sprint_podium: { perPilot: 3, exactOrderBonus: 5 },
+  sprint_last: { correct: 2 },
+  sprint_fastest_lap: { correct: 2 },
 } as const;
 
 /** Calculate points for a single bet vs actual results */
@@ -128,6 +132,83 @@ export function calculatePoints(
           breakdown: correct
             ? `Meilleur tour correct : ${getPilotName(predictions[0])} → +${POINTS.fastest_lap.correct}pts`
             : `Meilleur tour incorrect (prédit: ${getPilotName(predictions[0])}, réel: ${getPilotName(actual[0])})`,
+        },
+      };
+    }
+
+    case "sprint_winner": {
+      const correct = predictions[0] === actual[0];
+      return {
+        points: correct ? POINTS.sprint_winner.correct : 0,
+        detail: {
+          correctPilots: correct ? [predictions[0]] : [],
+          bonusExactOrder: false,
+          breakdown: correct
+            ? `Vainqueur sprint correct : ${getPilotName(predictions[0])} → +${POINTS.sprint_winner.correct}pts`
+            : `Vainqueur sprint incorrect (prédit: ${getPilotName(predictions[0])}, réel: ${getPilotName(actual[0])})`,
+        },
+      };
+    }
+
+    case "sprint_podium": {
+      const cfg = POINTS.sprint_podium;
+      const correctPilots = predictions.filter((p) => actual.includes(p));
+      const exactOrder =
+        predictions.length === actual.length &&
+        predictions.every((p, i) => p === actual[i]);
+
+      let pts = correctPilots.length * cfg.perPilot;
+      if (exactOrder && correctPilots.length === 3) {
+        pts += cfg.exactOrderBonus;
+      }
+
+      const parts: string[] = [];
+      if (correctPilots.length > 0) {
+        parts.push(
+          `${correctPilots.length} pilote(s) correct(s) : ${correctPilots.map(getPilotName).join(", ")} → +${correctPilots.length * cfg.perPilot}pts`
+        );
+      }
+      if (exactOrder && correctPilots.length === 3) {
+        parts.push(`Bonus ordre exact → +${cfg.exactOrderBonus}pts`);
+      }
+      if (parts.length === 0) {
+        parts.push("Aucun pilote correct");
+      }
+
+      return {
+        points: pts,
+        detail: {
+          correctPilots,
+          bonusExactOrder: exactOrder && correctPilots.length === 3,
+          breakdown: parts.join(" | "),
+        },
+      };
+    }
+
+    case "sprint_last": {
+      const correct = predictions[0] === actual[0];
+      return {
+        points: correct ? POINTS.sprint_last.correct : 0,
+        detail: {
+          correctPilots: correct ? [predictions[0]] : [],
+          bonusExactOrder: false,
+          breakdown: correct
+            ? `Dernier sprint correct : ${getPilotName(predictions[0])} → +${POINTS.sprint_last.correct}pts`
+            : `Dernier sprint incorrect (prédit: ${getPilotName(predictions[0])}, réel: ${getPilotName(actual[0])})`,
+        },
+      };
+    }
+
+    case "sprint_fastest_lap": {
+      const correct = predictions[0] === actual[0];
+      return {
+        points: correct ? POINTS.sprint_fastest_lap.correct : 0,
+        detail: {
+          correctPilots: correct ? [predictions[0]] : [],
+          bonusExactOrder: false,
+          breakdown: correct
+            ? `Meilleur tour sprint correct : ${getPilotName(predictions[0])} → +${POINTS.sprint_fastest_lap.correct}pts`
+            : `Meilleur tour sprint incorrect (prédit: ${getPilotName(predictions[0])}, réel: ${getPilotName(actual[0])})`,
         },
       };
     }

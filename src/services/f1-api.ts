@@ -13,6 +13,7 @@ interface JolpicaRace {
   date: string;
   time?: string;
   Qualifying?: { date: string; time?: string };
+  Sprint?: { date: string; time?: string };
 }
 
 interface JolpicaQualifyingResult {
@@ -34,6 +35,7 @@ export interface F1RaceInfo {
   country: string;
   qualiDate: string; // ISO datetime
   raceDate: string;  // ISO datetime
+  sprintDate: string | null; // null if no sprint
 }
 
 export interface F1QualifyingResults {
@@ -69,6 +71,10 @@ export async function fetchSeasonCalendar(season: number = config.f1Season): Pro
 
     const raceDate = `${r.date}T${r.time || "15:00:00Z"}`;
 
+    const sprintDate = r.Sprint
+      ? `${r.Sprint.date}T${r.Sprint.time || "11:00:00Z"}`
+      : null;
+
     return {
       season: parseInt(r.season, 10),
       round: parseInt(r.round, 10),
@@ -77,6 +83,7 @@ export async function fetchSeasonCalendar(season: number = config.f1Season): Pro
       country: r.Circuit.Location.country,
       qualiDate,
       raceDate,
+      sprintDate,
     };
   });
 }
@@ -98,6 +105,31 @@ export async function fetchQualifyingResults(
       pole: sorted[0].Driver.code,
       top3: sorted.slice(0, 3).map((r) => r.Driver.code),
       last: sorted[sorted.length - 1].Driver.code,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch sprint results for a specific round */
+export async function fetchSprintResults(
+  round: number,
+  season: number = config.f1Season
+): Promise<F1RaceResults | null> {
+  try {
+    const data = await fetchJson(`${BASE_URL}/${season}/${round}/sprint.json`);
+    const results: JolpicaRaceResult[] =
+      data.MRData.RaceTable.Races[0]?.SprintResults ?? [];
+
+    if (results.length === 0) return null;
+
+    const sorted = results.sort((a, b) => parseInt(a.position) - parseInt(b.position));
+    const fastestLapDriver = results.find((r) => r.FastestLap?.rank === "1");
+    return {
+      winner: sorted[0].Driver.code,
+      podium: sorted.slice(0, 3).map((r) => r.Driver.code),
+      last: sorted[sorted.length - 1].Driver.code,
+      fastestLap: fastestLapDriver?.Driver.code ?? null,
     };
   } catch {
     return null;

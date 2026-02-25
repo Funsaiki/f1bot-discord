@@ -72,6 +72,9 @@ export function isLocked(raceId: number, category: BetCategory): boolean {
   if (category === "pole" || category === "top3_quali" || category === "last_quali") {
     return race.qualiLocked;
   }
+  if (category === "sprint_winner" || category === "sprint_podium" || category === "sprint_last" || category === "sprint_fastest_lap") {
+    return race.sprintLocked;
+  }
   return race.raceLocked;
 }
 

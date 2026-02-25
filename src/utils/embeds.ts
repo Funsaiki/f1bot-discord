@@ -10,6 +10,10 @@ const CATEGORY_LABELS: Record<BetCategory, string> = {
   last_quali: "Dernier Qualifications",
   last_race: "Dernier Course",
   fastest_lap: "Meilleur Tour",
+  sprint_winner: "Vainqueur Sprint",
+  sprint_podium: "Podium Sprint",
+  sprint_last: "Dernier Sprint",
+  sprint_fastest_lap: "Meilleur Tour Sprint",
 };
 
 const CATEGORY_EMOJI: Record<BetCategory, string> = {
@@ -20,6 +24,10 @@ const CATEGORY_EMOJI: Record<BetCategory, string> = {
   last_quali: "\uD83D\uDCA8",
   last_race: "\uD83D\uDCA8",
   fastest_lap: "\u23F1\uFE0F",
+  sprint_winner: "\uD83C\uDFC6",
+  sprint_podium: "\uD83C\uDF1F",
+  sprint_last: "\uD83D\uDCA8",
+  sprint_fastest_lap: "\u23F1\uFE0F",
 };
 
 export function calendarEmbed(races: Race[]): EmbedBuilder {
@@ -38,7 +46,16 @@ export function calendarEmbed(races: Race[]): EmbedBuilder {
     });
     const qualiLock = r.qualiLocked ? " (verrouillé)" : "";
     const raceLock = r.raceLocked ? " (verrouillé)" : "";
-    return `**R${r.round}** ${r.name} — ${r.country}\nQualifs: ${qualiDate}${qualiLock} | Course: ${raceDate}${raceLock}`;
+    let line = `**R${r.round}** ${r.name} — ${r.country}\nQualifs: ${qualiDate}${qualiLock} | Course: ${raceDate}${raceLock}`;
+    if (r.sprintDate) {
+      const sprintDateStr = new Date(r.sprintDate).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "short",
+      });
+      const sprintLock = r.sprintLocked ? " (verrouillé)" : "";
+      line += ` | Sprint: ${sprintDateStr}${sprintLock}`;
+    }
+    return line;
   });
 
   embed.setDescription(lines.join("\n\n") || "Aucune course trouvée.");
