@@ -218,6 +218,19 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
             embeds: [userBetsEmbed(race, refreshedBets), confirmEmbed],
             components: newRows,
           });
+
+          // Post public update
+          const publicEmbed = new EmbedBuilder()
+            .setTitle(`${interaction.user.displayName} a modifié un pronostic — ${race.name}`)
+            .setDescription(
+              `${catInfo!.emoji} **${catInfo!.label}** : ${picks.map((c) => getPilotName(c)).join(", ")}`
+            )
+            .setColor(0xf1c40f)
+            .setThumbnail(interaction.user.displayAvatarURL());
+          const channel = interaction.channel;
+          if (channel && "send" in channel) {
+            await (channel as any).send({ embeds: [publicEmbed] });
+          }
         }
       });
 
