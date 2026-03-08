@@ -23,6 +23,7 @@ interface JolpicaQualifyingResult {
 
 interface JolpicaRaceResult {
   position: string;
+  positionText: string;
   Driver: { code: string; familyName: string };
   FastestLap?: { rank: string };
   status: string;
@@ -54,8 +55,8 @@ export interface F1RaceResults {
 
 /** Check if a driver actually finished the race (not DNF/DNS/DSQ) */
 function hasFinished(result: JolpicaRaceResult): boolean {
-  const status = result.status.toLowerCase();
-  return status === "finished" || status.startsWith("+");
+  // positionText is a number for classified drivers, "R" for retired, "W" for withdrawn, "D" for DSQ, etc.
+  return /^\d+$/.test(result.positionText);
 }
 
 async function fetchJson(url: string): Promise<any> {
