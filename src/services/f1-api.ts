@@ -25,6 +25,7 @@ interface JolpicaRaceResult {
   position: string;
   Driver: { code: string; familyName: string };
   FastestLap?: { rank: string };
+  status: string;
 }
 
 export interface F1RaceInfo {
@@ -49,6 +50,12 @@ export interface F1RaceResults {
   podium: string[];   // driver codes in order (P1, P2, P3)
   last: string;       // last classified driver
   fastestLap: string | null; // driver with fastest lap
+}
+
+/** Check if a driver actually finished the race (not DNF/DNS/DSQ) */
+function hasFinished(result: JolpicaRaceResult): boolean {
+  const status = result.status.toLowerCase();
+  return status === "finished" || status.startsWith("+");
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -124,11 +131,13 @@ export async function fetchSprintResults(
     if (results.length === 0) return null;
 
     const sorted = results.sort((a, b) => parseInt(a.position) - parseInt(b.position));
+    const finishers = sorted.filter(hasFinished);
+    const lastFinisher = finishers.length > 0 ? finishers[finishers.length - 1] : sorted[sorted.length - 1];
     const fastestLapDriver = results.find((r) => r.FastestLap?.rank === "1");
     return {
       winner: sorted[0].Driver.code,
       podium: sorted.slice(0, 3).map((r) => r.Driver.code),
-      last: sorted[sorted.length - 1].Driver.code,
+      last: lastFinisher.Driver.code,
       fastestLap: fastestLapDriver?.Driver.code ?? null,
     };
   } catch {
@@ -149,11 +158,13 @@ export async function fetchRaceResults(
     if (results.length === 0) return null;
 
     const sorted = results.sort((a, b) => parseInt(a.position) - parseInt(b.position));
+    const finishers = sorted.filter(hasFinished);
+    const lastFinisher = finishers.length > 0 ? finishers[finishers.length - 1] : sorted[sorted.length - 1];
     const fastestLapDriver = results.find((r) => r.FastestLap?.rank === "1");
     return {
       winner: sorted[0].Driver.code,
       podium: sorted.slice(0, 3).map((r) => r.Driver.code),
-      last: sorted[sorted.length - 1].Driver.code,
+      last: lastFinisher.Driver.code,
       fastestLap: fastestLapDriver?.Driver.code ?? null,
     };
   } catch {
