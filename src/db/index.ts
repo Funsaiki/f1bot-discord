@@ -78,5 +78,81 @@ function migrateDb() {
     sqlite.exec("ALTER TABLE races ADD COLUMN sprint_locked INTEGER NOT NULL DEFAULT 0");
     console.log("[Migration] Colonne sprint_locked ajoutée à races");
   }
+
+  // Migration: rebuild tables with updated CHECK constraints for sprint categories
+  // SQLite doesn't support ALTER TABLE to modify CHECK constraints, so we recreate
+  migrateCategoryConstraints();
+}
+
+function migrateCategoryConstraints() {
+  // Check if the bets table has outdated CHECK constraints by trying a dummy sprint category
+  try {
+    const checkSql = sqlite.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='bets'"
+    ).get() as { sql: string } | undefined;
+
+    if (!checkSql || checkSql.sql.includes("sprint_winner")) {
+      return; // Already up to date
+    }
+
+    console.log("[Migration] Mise à jour des contraintes CHECK pour les catégories sprint...");
+
+    sqlite.exec("BEGIN TRANSACTION");
+
+    // Rebuild bets table
+    sqlite.exec(`
+      CREATE TABLE bets_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        race_id INTEGER NOT NULL REFERENCES races(id),
+        category TEXT NOT NULL CHECK(category IN (${ALL_CATEGORIES})),
+        predictions TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(user_id, race_id, category)
+      );
+      INSERT INTO bets_new SELECT * FROM bets;
+      DROP TABLE bets;
+      ALTER TABLE bets_new RENAME TO bets;
+    `);
+
+    // Rebuild race_results table
+    sqlite.exec(`
+      CREATE TABLE race_results_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        race_id INTEGER NOT NULL REFERENCES races(id),
+        category TEXT NOT NULL CHECK(category IN (${ALL_CATEGORIES})),
+        results TEXT NOT NULL,
+        UNIQUE(race_id, category)
+      );
+      INSERT INTO race_results_new SELECT * FROM race_results;
+      DROP TABLE race_results;
+      ALTER TABLE race_results_new RENAME TO race_results;
+    `);
+
+    // Rebuild scores table
+    sqlite.exec(`
+      CREATE TABLE scores_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        race_id INTEGER NOT NULL REFERENCES races(id),
+        category TEXT NOT NULL CHECK(category IN (${ALL_CATEGORIES})),
+        points INTEGER NOT NULL,
+        detail TEXT NOT NULL,
+        UNIQUE(user_id, race_id, category)
+      );
+      INSERT INTO scores_new SELECT * FROM scores;
+      DROP TABLE scores;
+      ALTER TABLE scores_new RENAME TO scores;
+    `);
+
+    sqlite.exec("COMMIT");
+    console.log("[Migration] Contraintes CHECK mises à jour avec succès pour bets, race_results, scores");
+  } catch (err) {
+    sqlite.exec("ROLLBACK");
+    console.error("[Migration] Erreur lors de la mise à jour des contraintes CHECK:", err);
+    throw err;
+  }
 }
 migrateDb();
