@@ -187,7 +187,7 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
 
   const collector = reply.createMessageComponentCollector({
     filter: (i) => i.user.id === interaction.user.id,
-    time: 5 * 60 * 1000, // 5 minutes
+    time: 10 * 60 * 1000, // 10 minutes
   });
 
   collector.on("collect", async (i) => {
@@ -295,7 +295,7 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
   collector.on("end", (_, reason) => {
     if (reason === "time") {
       interaction.editReply({
-        embeds: [new EmbedBuilder().setTitle("Pronostics expirés (5 min)").setColor(0xff0000)],
+        embeds: [new EmbedBuilder().setTitle("Pronostics expirés (10 min)").setColor(0xff0000)],
         components: [],
       }).catch(() => {});
     }
