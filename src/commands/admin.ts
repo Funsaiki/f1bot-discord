@@ -3,8 +3,8 @@ import type { ChatInputCommandInteraction, AutocompleteInteraction } from "disco
 import type { Command } from "./index";
 import { config } from "../config";
 import { db } from "../db";
-import { races, raceResults } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { races, raceResults, bets, scores } from "../db/schema";
+import { eq, and, gte } from "drizzle-orm";
 import { fetchSeasonCalendar, fetchQualifyingResults, fetchRaceResults, fetchSprintResults } from "../services/f1-api";
 import { scoreRaceCategory } from "../services/scoring";
 import { resultsAnnouncementEmbed } from "../utils/embeds";
@@ -76,6 +76,25 @@ const data = new SlashCommandBuilder()
             { name: "Sprint", value: "sprint" }
           )
       )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("delete-race")
+      .setDescription("Supprimer une course (cascade : pronos, scores, résultats)")
+      .addIntegerOption((opt) =>
+        opt.setName("round").setDescription("Numéro du round à supprimer").setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("shift-rounds")
+      .setDescription("Décaler les numéros de round à partir d'un round (ex: -2 pour décaler vers le bas)")
+      .addIntegerOption((opt) =>
+        opt.setName("from-round").setDescription("Round à partir duquel décaler (inclus)").setRequired(true).setAutocomplete(true)
+      )
+      .addIntegerOption((opt) =>
+        opt.setName("delta").setDescription("Décalage à appliquer (ex: -2 ou +1)").setRequired(true)
+      )
   );
 
 async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -96,6 +115,12 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
     case "lock":
     case "unlock":
       await handleLockToggle(interaction, sub === "lock");
+      break;
+    case "delete-race":
+      await handleDeleteRace(interaction);
+      break;
+    case "shift-rounds":
+      await handleShiftRounds(interaction);
       break;
   }
 }
@@ -305,6 +330,100 @@ async function handleLockToggle(interaction: ChatInputCommandInteraction, lock: 
   await interaction.reply(`Pronostics **${sessionLabel}** ${action} pour **${race.name}**.`);
 }
 
+async function handleDeleteRace(interaction: ChatInputCommandInteraction): Promise<void> {
+  const round = interaction.options.getInteger("round", true);
+
+  const race = db
+    .select()
+    .from(races)
+    .where(and(eq(races.season, config.f1Season), eq(races.round, round)))
+    .get();
+
+  if (!race) {
+    await interaction.reply({ content: `Round ${round} introuvable.`, ephemeral: true });
+    return;
+  }
+
+  const betsCount = db.select().from(bets).where(eq(bets.raceId, race.id)).all().length;
+  const scoresCount = db.select().from(scores).where(eq(scores.raceId, race.id)).all().length;
+  const resultsCount = db.select().from(raceResults).where(eq(raceResults.raceId, race.id)).all().length;
+
+  // Cascade delete (FKs are ON, must delete children first)
+  db.delete(bets).where(eq(bets.raceId, race.id)).run();
+  db.delete(scores).where(eq(scores.raceId, race.id)).run();
+  db.delete(raceResults).where(eq(raceResults.raceId, race.id)).run();
+  db.delete(races).where(eq(races.id, race.id)).run();
+
+  await interaction.reply(
+    `Course **R${round} ${race.name}** supprimée. Cascade : ${betsCount} pronos, ${scoresCount} scores, ${resultsCount} résultats.`
+  );
+}
+
+async function handleShiftRounds(interaction: ChatInputCommandInteraction): Promise<void> {
+  const fromRound = interaction.options.getInteger("from-round", true);
+  const delta = interaction.options.getInteger("delta", true);
+
+  if (delta === 0) {
+    await interaction.reply({ content: "Le delta doit être différent de 0.", ephemeral: true });
+    return;
+  }
+
+  const affected = db
+    .select()
+    .from(races)
+    .where(and(eq(races.season, config.f1Season), gte(races.round, fromRound)))
+    .all();
+
+  if (affected.length === 0) {
+    await interaction.reply({ content: `Aucune course à partir du round ${fromRound}.`, ephemeral: true });
+    return;
+  }
+
+  // Validate target rounds: all >= 1, and no collision with rounds < fromRound (untouched)
+  const untouched = db
+    .select()
+    .from(races)
+    .where(and(eq(races.season, config.f1Season)))
+    .all()
+    .filter((r) => r.round < fromRound);
+  const untouchedRounds = new Set(untouched.map((r) => r.round));
+
+  for (const r of affected) {
+    const target = r.round + delta;
+    if (target < 1) {
+      await interaction.reply({
+        content: `Décalage refusé : R${r.round} (${r.name}) deviendrait R${target} (< 1).`,
+        ephemeral: true,
+      });
+      return;
+    }
+    if (untouchedRounds.has(target)) {
+      await interaction.reply({
+        content: `Décalage refusé : R${r.round} (${r.name}) deviendrait R${target}, mais ce round existe déjà (non décalé).`,
+        ephemeral: true,
+      });
+      return;
+    }
+  }
+
+  // Two-phase shift via temporary offset to avoid unique-index collisions mid-update
+  const TEMP_OFFSET = 100000;
+  const ids = affected.map((r) => r.id);
+  db.transaction((tx) => {
+    for (const r of affected) {
+      tx.update(races).set({ round: r.round + delta + TEMP_OFFSET }).where(eq(races.id, r.id)).run();
+    }
+    for (const id of ids) {
+      const row = tx.select().from(races).where(eq(races.id, id)).get()!;
+      tx.update(races).set({ round: row.round - TEMP_OFFSET }).where(eq(races.id, id)).run();
+    }
+  });
+
+  await interaction.reply(
+    `${affected.length} course(s) décalée(s) de ${delta >= 0 ? "+" : ""}${delta} (à partir de R${fromRound}).`
+  );
+}
+
 function upsertResult(raceId: number, category: BetCategory, results: string[]) {
   const existing = db
     .select()
@@ -323,8 +442,6 @@ function upsertResult(raceId: number, category: BetCategory, results: string[]) 
       .run();
   }
 }
-
-import { scores } from "../db/schema";
 
 function getScoresForAnnouncement(raceId: number, category: BetCategory) {
   return db
